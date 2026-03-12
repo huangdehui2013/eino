@@ -562,6 +562,353 @@ func TestConcatMessage(t *testing.T) {
 		assert.Equal(t, expectedContent, mergedMsg.AssistantGenMultiContent)
 	})
 
+	t.Run("concat text parts with extra", func(t *testing.T) {
+		msgs := []*Message{
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeText, Text: "Hello ", Extra: map[string]any{"key1": "val1"}},
+				},
+			},
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeText, Text: "World", Extra: map[string]any{"key2": "val2"}},
+				},
+			},
+		}
+
+		mergedMsg, err := ConcatMessages(msgs)
+		assert.NoError(t, err)
+
+		expectedContent := []MessageOutputPart{
+			{Type: ChatMessagePartTypeText, Text: "Hello World", Extra: map[string]any{"key1": "val1", "key2": "val2"}},
+		}
+
+		assert.Equal(t, expectedContent, mergedMsg.AssistantGenMultiContent)
+	})
+
+	t.Run("concat text parts with single extra", func(t *testing.T) {
+		msgs := []*Message{
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeText, Text: "Hello ", Extra: map[string]any{"key1": "val1"}},
+				},
+			},
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeText, Text: "World"},
+				},
+			},
+		}
+
+		mergedMsg, err := ConcatMessages(msgs)
+		assert.NoError(t, err)
+
+		expectedContent := []MessageOutputPart{
+			{Type: ChatMessagePartTypeText, Text: "Hello World", Extra: map[string]any{"key1": "val1"}},
+		}
+
+		assert.Equal(t, expectedContent, mergedMsg.AssistantGenMultiContent)
+	})
+
+	t.Run("concat reasoning parts with extra", func(t *testing.T) {
+		msgs := []*Message{
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeReasoning, Reasoning: &MessageOutputReasoning{Text: "First, "}, Extra: map[string]any{"key1": "val1"}},
+				},
+			},
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeReasoning, Reasoning: &MessageOutputReasoning{Text: "I need to think."}, Extra: map[string]any{"key2": "val2"}},
+				},
+			},
+		}
+
+		mergedMsg, err := ConcatMessages(msgs)
+		assert.NoError(t, err)
+
+		expectedContent := []MessageOutputPart{
+			{Type: ChatMessagePartTypeReasoning, Reasoning: &MessageOutputReasoning{Text: "First, I need to think."}, Extra: map[string]any{"key1": "val1", "key2": "val2"}},
+		}
+
+		assert.Equal(t, expectedContent, mergedMsg.AssistantGenMultiContent)
+	})
+
+	t.Run("concat audio parts with outer extra", func(t *testing.T) {
+		base64Audio1 := "dGVzdF9hdWRpb18x"
+		base64Audio2 := "dGVzdF9hdWRpb18y"
+
+		msgs := []*Message{
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeAudioURL, Audio: &MessageOutputAudio{MessagePartCommon: MessagePartCommon{Base64Data: &base64Audio1}}, Extra: map[string]any{"outer1": "val1"}},
+				},
+			},
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeAudioURL, Audio: &MessageOutputAudio{MessagePartCommon: MessagePartCommon{Base64Data: &base64Audio2}}, Extra: map[string]any{"outer2": "val2"}},
+				},
+			},
+		}
+
+		mergedMsg, err := ConcatMessages(msgs)
+		assert.NoError(t, err)
+
+		mergedBase64Audio := base64Audio1 + base64Audio2
+		expectedContent := []MessageOutputPart{
+			{Type: ChatMessagePartTypeAudioURL, Audio: &MessageOutputAudio{MessagePartCommon: MessagePartCommon{Base64Data: &mergedBase64Audio}}, Extra: map[string]any{"outer1": "val1", "outer2": "val2"}},
+		}
+
+		assert.Equal(t, expectedContent, mergedMsg.AssistantGenMultiContent)
+	})
+
+	t.Run("concat reasoning parts", func(t *testing.T) {
+		msgs := []*Message{
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeReasoning, Reasoning: &MessageOutputReasoning{Text: "First, "}},
+				},
+			},
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeReasoning, Reasoning: &MessageOutputReasoning{Text: "I need to think."}},
+				},
+			},
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeText, Text: "Here is my answer."},
+				},
+			},
+		}
+
+		mergedMsg, err := ConcatMessages(msgs)
+		assert.NoError(t, err)
+
+		expectedContent := []MessageOutputPart{
+			{Type: ChatMessagePartTypeReasoning, Reasoning: &MessageOutputReasoning{Text: "First, I need to think."}},
+			{Type: ChatMessagePartTypeText, Text: "Here is my answer."},
+		}
+
+		assert.Equal(t, expectedContent, mergedMsg.AssistantGenMultiContent)
+	})
+
+	t.Run("concat reasoning parts with signature", func(t *testing.T) {
+		msgs := []*Message{
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeReasoning, Reasoning: &MessageOutputReasoning{Text: "Step 1: "}},
+				},
+			},
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeReasoning, Reasoning: &MessageOutputReasoning{Text: "analyze.", Signature: "sig_abc"}},
+				},
+			},
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeReasoning, Reasoning: &MessageOutputReasoning{Text: " Step 2: ", Signature: "sig_xyz"}},
+				},
+			},
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeReasoning, Reasoning: &MessageOutputReasoning{Text: "conclude."}},
+				},
+			},
+		}
+
+		mergedMsg, err := ConcatMessages(msgs)
+		assert.NoError(t, err)
+
+		expectedContent := []MessageOutputPart{
+			{Type: ChatMessagePartTypeReasoning, Reasoning: &MessageOutputReasoning{Text: "Step 1: analyze. Step 2: conclude.", Signature: "sig_xyz"}},
+		}
+
+		assert.Equal(t, expectedContent, mergedMsg.AssistantGenMultiContent)
+	})
+
+	t.Run("concat with streaming meta index grouping", func(t *testing.T) {
+		msgs := []*Message{
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeReasoning, Reasoning: &MessageOutputReasoning{Text: "Think "}, StreamingMeta: &MessageStreamingMeta{Index: 0}},
+				},
+			},
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeReasoning, Reasoning: &MessageOutputReasoning{Text: "more."}, StreamingMeta: &MessageStreamingMeta{Index: 0}},
+				},
+			},
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeText, Text: "Hello ", StreamingMeta: &MessageStreamingMeta{Index: 1}},
+				},
+			},
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeText, Text: "world!", StreamingMeta: &MessageStreamingMeta{Index: 1}},
+				},
+			},
+		}
+
+		mergedMsg, err := ConcatMessages(msgs)
+		assert.NoError(t, err)
+
+		expectedContent := []MessageOutputPart{
+			{Type: ChatMessagePartTypeReasoning, Reasoning: &MessageOutputReasoning{Text: "Think more."}, StreamingMeta: &MessageStreamingMeta{Index: 0}},
+			{Type: ChatMessagePartTypeText, Text: "Hello world!", StreamingMeta: &MessageStreamingMeta{Index: 1}},
+		}
+
+		assert.Equal(t, expectedContent, mergedMsg.AssistantGenMultiContent)
+	})
+
+	t.Run("concat with different streaming meta index should not merge", func(t *testing.T) {
+		msgs := []*Message{
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeText, Text: "First block ", StreamingMeta: &MessageStreamingMeta{Index: 0}},
+				},
+			},
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeText, Text: "Second block ", StreamingMeta: &MessageStreamingMeta{Index: 1}},
+				},
+			},
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeText, Text: "continues.", StreamingMeta: &MessageStreamingMeta{Index: 0}},
+				},
+			},
+		}
+
+		mergedMsg, err := ConcatMessages(msgs)
+		assert.NoError(t, err)
+
+		expectedContent := []MessageOutputPart{
+			{Type: ChatMessagePartTypeText, Text: "First block ", StreamingMeta: &MessageStreamingMeta{Index: 0}},
+			{Type: ChatMessagePartTypeText, Text: "Second block ", StreamingMeta: &MessageStreamingMeta{Index: 1}},
+			{Type: ChatMessagePartTypeText, Text: "continues.", StreamingMeta: &MessageStreamingMeta{Index: 0}},
+		}
+
+		assert.Equal(t, expectedContent, mergedMsg.AssistantGenMultiContent)
+	})
+
+	t.Run("concat empty parts", func(t *testing.T) {
+		msgs := []*Message{
+			{
+				Role:                     Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{},
+			},
+		}
+
+		mergedMsg, err := ConcatMessages(msgs)
+		assert.NoError(t, err)
+		assert.Empty(t, mergedMsg.AssistantGenMultiContent)
+	})
+
+	t.Run("concat single part no merge needed", func(t *testing.T) {
+		msgs := []*Message{
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeText, Text: "Single"},
+				},
+			},
+		}
+
+		mergedMsg, err := ConcatMessages(msgs)
+		assert.NoError(t, err)
+
+		expectedContent := []MessageOutputPart{
+			{Type: ChatMessagePartTypeText, Text: "Single"},
+		}
+		assert.Equal(t, expectedContent, mergedMsg.AssistantGenMultiContent)
+	})
+
+	t.Run("concat multiple consecutive text parts", func(t *testing.T) {
+		msgs := []*Message{
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeText, Text: "One "},
+				},
+			},
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeText, Text: "Two "},
+				},
+			},
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeText, Text: "Three "},
+				},
+			},
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeText, Text: "Four"},
+				},
+			},
+		}
+
+		mergedMsg, err := ConcatMessages(msgs)
+		assert.NoError(t, err)
+
+		expectedContent := []MessageOutputPart{
+			{Type: ChatMessagePartTypeText, Text: "One Two Three Four"},
+		}
+		assert.Equal(t, expectedContent, mergedMsg.AssistantGenMultiContent)
+	})
+
+	t.Run("concat without streaming meta should not merge with streaming meta parts", func(t *testing.T) {
+		msgs := []*Message{
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeText, Text: "No meta "},
+				},
+			},
+			{
+				Role: Assistant,
+				AssistantGenMultiContent: []MessageOutputPart{
+					{Type: ChatMessagePartTypeText, Text: "With meta", StreamingMeta: &MessageStreamingMeta{Index: 0}},
+				},
+			},
+		}
+
+		mergedMsg, err := ConcatMessages(msgs)
+		assert.NoError(t, err)
+
+		expectedContent := []MessageOutputPart{
+			{Type: ChatMessagePartTypeText, Text: "No meta "},
+			{Type: ChatMessagePartTypeText, Text: "With meta", StreamingMeta: &MessageStreamingMeta{Index: 0}},
+		}
+		assert.Equal(t, expectedContent, mergedMsg.AssistantGenMultiContent)
+	})
+
 	t.Run("concat multi content (deprecated)", func(t *testing.T) {
 		msgs := []*Message{
 			{
@@ -1061,6 +1408,38 @@ func TestConcatToolResults(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Len(t, result.Parts, 3)
 
+	})
+
+	t.Run("multiple_text_parts_merge_with_extra", func(t *testing.T) {
+		chunks := []*ToolResult{
+			{
+				Parts: []ToolOutputPart{
+					{Type: ToolPartTypeText, Text: "Hello ", Extra: map[string]any{"k1": "v1"}},
+					{Type: ToolPartTypeText, Text: "World", Extra: map[string]any{"k2": "v2"}},
+				},
+			},
+		}
+		result, err := ConcatToolResults(chunks)
+		assert.NoError(t, err)
+		assert.Len(t, result.Parts, 1)
+		assert.Equal(t, "Hello World", result.Parts[0].Text)
+		assert.Equal(t, map[string]any{"k1": "v1", "k2": "v2"}, result.Parts[0].Extra)
+	})
+
+	t.Run("multiple_text_parts_merge_with_single_extra", func(t *testing.T) {
+		chunks := []*ToolResult{
+			{
+				Parts: []ToolOutputPart{
+					{Type: ToolPartTypeText, Text: "Hello ", Extra: map[string]any{"k1": "v1"}},
+					{Type: ToolPartTypeText, Text: "World"},
+				},
+			},
+		}
+		result, err := ConcatToolResults(chunks)
+		assert.NoError(t, err)
+		assert.Len(t, result.Parts, 1)
+		assert.Equal(t, "Hello World", result.Parts[0].Text)
+		assert.Equal(t, map[string]any{"k1": "v1"}, result.Parts[0].Extra)
 	})
 
 	t.Run("cross_chunk_audio_conflict_error", func(t *testing.T) {

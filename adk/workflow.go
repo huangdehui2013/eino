@@ -54,6 +54,19 @@ func (a *workflowAgent) Description(_ context.Context) string {
 	return a.description
 }
 
+func (a *workflowAgent) GetType() string {
+	switch a.mode {
+	case workflowAgentModeSequential:
+		return "Sequential"
+	case workflowAgentModeParallel:
+		return "Parallel"
+	case workflowAgentModeLoop:
+		return "Loop"
+	default:
+		return "WorkflowAgent"
+	}
+}
+
 func (a *workflowAgent) Run(ctx context.Context, _ *AgentInput, opts ...AgentRunOption) *AsyncIterator[*AgentEvent] {
 	iterator, generator := NewAsyncIteratorPair[*AgentEvent]()
 
@@ -281,19 +294,6 @@ func NewBreakLoopAction(agentName string) *AgentAction {
 	}}
 }
 
-func (a *workflowAgent) doBreakLoopIfNeeded(aa *AgentAction, iterations int) bool {
-	if a.mode != workflowAgentModeLoop {
-		return false
-	}
-
-	if aa != nil && aa.BreakLoop != nil && !aa.BreakLoop.Done {
-		aa.BreakLoop.Done = true
-		aa.BreakLoop.CurrentIterations = iterations
-		return true
-	}
-	return false
-}
-
 func (a *workflowAgent) runLoop(ctx context.Context, generator *AsyncGenerator[*AgentEvent],
 	loopState *loopWorkflowState, resumeInfo *ResumeInfo, opts ...AgentRunOption) (err error) {
 
@@ -344,13 +344,24 @@ func (a *workflowAgent) runLoop(ctx context.Context, generator *AsyncGenerator[*
 			loopCtx = updateRunPathOnly(loopCtx, subAgent.Name(loopCtx))
 
 			var lastActionEvent *AgentEvent
+			var breakLoopEvent *AgentEvent
 			for {
 				event, ok := subIterator.Next()
 				if !ok {
 					break
 				}
 
+				if event.Err != nil {
+					generator.Send(event)
+					return nil
+				}
+
 				if lastActionEvent != nil {
+					if lastActionEvent.Action.BreakLoop != nil && !lastActionEvent.Action.BreakLoop.Done {
+						lastActionEvent.Action.BreakLoop.Done = true
+						lastActionEvent.Action.BreakLoop.CurrentIterations = i
+						breakLoopEvent = lastActionEvent
+					}
 					generator.Send(lastActionEvent)
 					lastActionEvent = nil
 				}
@@ -363,6 +374,12 @@ func (a *workflowAgent) runLoop(ctx context.Context, generator *AsyncGenerator[*
 			}
 
 			if lastActionEvent != nil {
+				if lastActionEvent.Action.BreakLoop != nil && !lastActionEvent.Action.BreakLoop.Done {
+					lastActionEvent.Action.BreakLoop.Done = true
+					lastActionEvent.Action.BreakLoop.CurrentIterations = i
+					breakLoopEvent = lastActionEvent
+				}
+
 				if lastActionEvent.Action.internalInterrupted != nil {
 					// A sub-agent interrupted. Wrap it with our own loop state.
 					state := &loopWorkflowState{
@@ -392,12 +409,11 @@ func (a *workflowAgent) runLoop(ctx context.Context, generator *AsyncGenerator[*
 					return
 				}
 
-				if a.doBreakLoopIfNeeded(lastActionEvent.Action, i) {
-					generator.Send(lastActionEvent)
-					return
-				}
-
 				generator.Send(lastActionEvent)
+			}
+
+			if breakLoopEvent != nil {
+				return
 			}
 		}
 
